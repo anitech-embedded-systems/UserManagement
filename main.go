@@ -13,3 +13,5 @@ func main() {
 	server.HandleRequest()
 	defer db.Close()
 }
+
+//need to follow layered structure
