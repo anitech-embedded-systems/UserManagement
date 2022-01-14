@@ -17,6 +17,11 @@ type UserDetail struct {
 	LastName  string `json:"lastname"`
 }
 
+type Response struct {
+	Message  string     `json:"message"`
+	UserInfo UserDetail `json: userinfo`
+}
+
 const (
 	SQLTableConnErr = iota
 	SQLTableScanErr
@@ -133,6 +138,7 @@ func UserLogin(username string, passwd string) (userdetail UserDetail, ret int) 
 	case nil:
 		if user.Passwd == passwd {
 			log.Println("LOGIN SUCCESSFUL!")
+			user.UserName = username
 			return user, UserLoginSuccess
 		}
 	default:

@@ -15,13 +15,18 @@ func HomePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func LoginPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var response dbm.Response
+	response.Message = ""
 	//read body of the request
 	var user dbm.UserDetail
 	ret := 0
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		log.Println("Error while reading body of login page", err)
-		http.Error(w, "Error in reading body", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		response.Message = "Error in reading HTTP Body"
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
@@ -29,66 +34,93 @@ func LoginPage(w http.ResponseWriter, r *http.Request) {
 	//return the user id
 	user.ID, ret = dbm.UsernameExistanceCheck(user.UserName)
 	if user.ID == dbm.IDNone {
-		json.NewEncoder(w).Encode(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode("http://localhost:8090/signup")
+		w.WriteHeader(http.StatusUnauthorized)
+		response.Message = "User Not Found, Please Signup First, http://localhost:8090/signup"
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 	if ret == dbm.SQLTableConnErr || ret == dbm.SQLTableScanErr {
-		json.NewEncoder(w).Encode(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		response.Message = "Error in DataBase"
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 	userlogin, ret := dbm.UserLogin(user.UserName, user.Passwd)
 	if ret == dbm.UserLoginSuccess {
-		json.NewEncoder(w).Encode(http.StatusOK)
-		json.NewEncoder(w).Encode(userlogin.ID)
+		w.WriteHeader(http.StatusOK)
+		response.Message = "Login Successful"
+		userlogin.Passwd = ""
+		response.UserInfo = userlogin
+		json.NewEncoder(w).Encode(response)
 	} else {
-		json.NewEncoder(w).Encode(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
+		response.Message = "User Name or Password is wrong, please try gain!"
+		json.NewEncoder(w).Encode(response)
 	}
 }
 
 func SignupPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var response dbm.Response
+	response.Message = ""
+
 	var user dbm.UserDetail
 	ret := 0
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		log.Println("Error while reading body of signup page", err)
-		http.Error(w, "Error in reading body", http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		response.Message = "Error in reading HTTP Body"
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
-	// db = connectDB()
-	// defer db.Close()
-
 	if len(user.UserName) == 0 {
-		json.NewEncoder(w).Encode(http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		response.Message = "User Name Missing"
+		json.NewEncoder(w).Encode(response)
 		return
 	} else if len(user.Passwd) == 0 || len(user.FirstName) == 0 {
-		json.NewEncoder(w).Encode(http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		response.Message = "First Name Missing"
+		json.NewEncoder(w).Encode(response)
 		return
 	} else if len(user.Passwd) < 8 {
-		json.NewEncoder(w).Encode(http.StatusBadRequest)
+		w.WriteHeader(http.StatusBadRequest)
+		response.Message = "Password Length is insufficient"
+		json.NewEncoder(w).Encode(response)
 		return
 	} else {
 		userCheck := dbm.UsernameDupCheck(user.UserName)
 		if userCheck == dbm.UserFound {
-			json.NewEncoder(w).Encode(http.StatusUnauthorized)
+			w.WriteHeader(http.StatusUnauthorized)
+			response.Message = "Username already exists"
+			json.NewEncoder(w).Encode(response)
 			return
 		} else if userCheck == dbm.UserNotFound {
 			user.ID, ret = dbm.CreateUser(user.UserName, user.Passwd, user.FirstName, user.LastName)
 			if ret != dbm.AllOK {
-				json.NewEncoder(w).Encode(http.StatusBadRequest)
+				w.WriteHeader(http.StatusBadRequest)
+				response.Message = "Something wrong with the database"
+				json.NewEncoder(w).Encode(response)
 				return
 			}
 			if user.ID == dbm.IDNone {
-				json.NewEncoder(w).Encode(http.StatusBadRequest)
+				w.WriteHeader(http.StatusBadRequest)
+				response.Message = "Something wrong with the database"
+				json.NewEncoder(w).Encode(response)
 				return
 			}
 		} else {
-			json.NewEncoder(w).Encode(http.StatusBadRequest)
+			w.WriteHeader(http.StatusBadRequest)
+			response.Message = "Something wrong with the database"
+			json.NewEncoder(w).Encode(response)
 		}
-		json.NewEncoder(w).Encode(http.StatusOK)
+		w.WriteHeader(http.StatusOK)
 		user.Passwd = strings.Repeat("*", len(user.Passwd))
-		json.NewEncoder(w).Encode(user)
+		response.Message = "Signup Successful"
+		response.UserInfo = user
+		json.NewEncoder(w).Encode(response)
 		return
 	}
 
