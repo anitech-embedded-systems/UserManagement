@@ -2,26 +2,37 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
-	dbm "main/Data"
+	"main/model"
+	"main/service"
 	"net/http"
-	"strings"
 
 	"github.com/gorilla/mux"
 )
 
-func HomePage(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(http.StatusOK)
+type Server struct {
+	port        int
+	userservice service.UserService
 }
 
-func LoginPage(w http.ResponseWriter, r *http.Request) {
+func New(port int, userservice service.UserService) (*Server, error) {
+	return &Server{port: port, userservice: userservice}, nil
+}
+
+func (s Server) HomePage(w http.ResponseWriter, r *http.Request) {
+	json.NewEncoder(w).Encode(http.StatusOK)
+	return
+}
+
+func (s Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
+
+	var user model.UserDetail
+	var response model.Response
 	w.Header().Set("Content-Type", "application/json")
-	var response dbm.Response
-	response.Message = ""
 	//read body of the request
-	var user dbm.UserDetail
-	ret := 0
 	err := json.NewDecoder(r.Body).Decode(&user)
+	response.Message = ""
 	if err != nil {
 		log.Println("Error while reading body of login page", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -29,43 +40,24 @@ func LoginPage(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-
-	//check the existance of user
-	//return the user id
-	user.ID, ret = dbm.UsernameExistanceCheck(user.UserName)
-	if user.ID == dbm.IDNone {
-		w.WriteHeader(http.StatusUnauthorized)
-		response.Message = "User Not Found, Please Signup First, http://localhost:8090/signup"
-		json.NewEncoder(w).Encode(response)
-		return
-	}
-	if ret == dbm.SQLTableConnErr || ret == dbm.SQLTableScanErr {
-		w.WriteHeader(http.StatusUnauthorized)
-		response.Message = "Error in DataBase"
-		json.NewEncoder(w).Encode(response)
-		return
-	}
-	userlogin, ret := dbm.UserLogin(user.UserName, user.Passwd)
-	if ret == dbm.UserLoginSuccess {
-		w.WriteHeader(http.StatusOK)
+	if s.userservice.Login(user.UserName, user.Passwd) {
 		response.Message = "Login Successful"
-		userlogin.Passwd = ""
-		response.UserInfo = userlogin
 		json.NewEncoder(w).Encode(response)
+		w.WriteHeader(http.StatusOK)
+		return
 	} else {
-		w.WriteHeader(http.StatusUnauthorized)
-		response.Message = "User Name or Password is wrong, please try gain!"
+		response.Message = "Login Unsuccessful"
 		json.NewEncoder(w).Encode(response)
+		w.WriteHeader(http.StatusUnauthorized)
+		return
 	}
 }
 
-func SignupPage(w http.ResponseWriter, r *http.Request) {
+func (s Server) SignupHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var response dbm.Response
+	var response model.Response
 	response.Message = ""
-
-	var user dbm.UserDetail
-	ret := 0
+	var user model.UserDetail
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		log.Println("Error while reading body of signup page", err)
@@ -74,7 +66,6 @@ func SignupPage(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	}
-
 	if len(user.UserName) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		response.Message = "User Name Missing"
@@ -91,44 +82,29 @@ func SignupPage(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(response)
 		return
 	} else {
-		userCheck := dbm.UsernameDupCheck(user.UserName)
-		if userCheck == dbm.UserFound {
-			w.WriteHeader(http.StatusUnauthorized)
-			response.Message = "Username already exists"
+		if s.userservice.Signup(&user) {
+			w.WriteHeader(http.StatusOK)
+			response.Message = "SignUp Succesfull"
 			json.NewEncoder(w).Encode(response)
 			return
-		} else if userCheck == dbm.UserNotFound {
-			user.ID, ret = dbm.CreateUser(user.UserName, user.Passwd, user.FirstName, user.LastName)
-			if ret != dbm.AllOK {
-				w.WriteHeader(http.StatusBadRequest)
-				response.Message = "Something wrong with the database"
-				json.NewEncoder(w).Encode(response)
-				return
-			}
-			if user.ID == dbm.IDNone {
-				w.WriteHeader(http.StatusBadRequest)
-				response.Message = "Something wrong with the database"
-				json.NewEncoder(w).Encode(response)
-				return
-			}
 		} else {
-			w.WriteHeader(http.StatusBadRequest)
-			response.Message = "Something wrong with the database"
+			w.WriteHeader(http.StatusUnauthorized)
+			response.Message = "SignUp Unsuccesfull"
 			json.NewEncoder(w).Encode(response)
+			return
 		}
-		w.WriteHeader(http.StatusOK)
-		user.Passwd = strings.Repeat("*", len(user.Passwd))
-		response.Message = "Signup Successful"
-		response.UserInfo = user
-		json.NewEncoder(w).Encode(response)
-		return
 	}
-
 }
-func HandleRequest() {
+
+func (s Server) Start() {
 	r := mux.NewRouter()
-	r.HandleFunc("/homepage", HomePage)
-	r.HandleFunc("/login", LoginPage).Methods("post")
-	r.HandleFunc("/signup", SignupPage).Methods("post")
-	log.Fatal(http.ListenAndServe(":8090", r))
+	r.HandleFunc("/homepage", s.HomePage)
+	r.HandleFunc("/login", s.LoginHandler).Methods("post")
+	r.HandleFunc("/signup", s.SignupHandler).Methods("post")
+	port := fmt.Sprintf(":%d", s.port)
+	log.Fatal(http.ListenAndServe(port, r))
+}
+
+func (s Server) Stop() {
+	//stop server port
 }
