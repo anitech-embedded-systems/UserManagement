@@ -1,0 +1,7 @@
+mysql:
+  host: "mysql"
+  username: "root"
+  password: "Aaaa"
+  table: "UserBase"
+  database: "user_login"
+default: "animesh"
